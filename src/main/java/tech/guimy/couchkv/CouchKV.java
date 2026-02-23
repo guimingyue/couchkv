@@ -76,6 +76,7 @@ public class CouchKV implements Closeable {
         this(path, new Options());
     }
 
+    @SuppressWarnings("unchecked")
     private CouchKV(Path path, Options options) throws IOException {
         this.dbPath = path;
         this.store = new KVStore<>(path, options.getFragmentationThreshold(), options.isAutoCompact());

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="d28da79d-0d45-44b6-9929-b3bfe84cc677" name="Changes" comment="" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="15" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 0
+}]]></component>
+  <component name="ProjectId" id="39xk60SK2f9fEledoebNVWBtHW8" />
+  <component name="ProjectViewState">
+    <option name="abbreviatePackageNames" value="true" />
+    <option name="flattenModules" value="true" />
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+    <option name="showMembers" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Application.CouchKVComprehensiveTest.executor": "Run",
+    "Application.KVStoreTest.executor": "Run",
+    "Application.WALTest.executor": "Run",
+    "Application.tech.guimy.couchkv.CouchKVComprehensiveTest.executor": "Run",
+    "Application.tech.guimy.couchkv.WALTest.executor": "Run",
+    "JUnit.WALTest.executor": "Run",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "git-widget-placeholder": "master",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "/Users/guimingyue/github/couchkv",
+    "project.structure.last.edited": "Modules",
+    "project.structure.proportion": "0.15",
+    "project.structure.side.proportion": "0.2"
+  }
+}]]></component>
+  <component name="RunManager" selected="Application.tech.guimy.couchkv.CouchKVComprehensiveTest">
+    <configuration name="CouchKVComprehensiveTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.apache.couchkv.kv.CouchKVComprehensiveTest" />
+      <module name="couchkv" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.apache.couchkv.kv.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="KVStoreTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.apache.couchkv.kv.KVStoreTest" />
+      <module name="couchkv" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.apache.couchkv.kv.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="WALTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="com.apache.couchkv.kv.WALTest" />
+      <module name="couchkv" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="com.apache.couchkv.kv.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="tech.guimy.couchkv.CouchKVComprehensiveTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="tech.guimy.couchkv.CouchKVComprehensiveTest" />
+      <module name="couchkv" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="tech.guimy.couchkv.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="tech.guimy.couchkv.WALTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+      <option name="MAIN_CLASS_NAME" value="tech.guimy.couchkv.WALTest" />
+      <module name="couchkv" />
+      <extension name="coverage">
+        <pattern>
+          <option name="PATTERN" value="tech.guimy.couchkv.*" />
+          <option name="ENABLED" value="true" />
+        </pattern>
+      </extension>
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Application.tech.guimy.couchkv.CouchKVComprehensiveTest" />
+        <item itemvalue="Application.tech.guimy.couchkv.WALTest" />
+        <item itemvalue="Application.CouchKVComprehensiveTest" />
+        <item itemvalue="Application.KVStoreTest" />
+        <item itemvalue="Application.WALTest" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-2fc7cc6b9a17-intellij.indexing.shared.core-IU-253.30387.90" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d28da79d-0d45-44b6-9929-b3bfe84cc677" name="Changes" comment="" />
+      <created>1771644932918</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1771644932918</updated>
+    </task>
+    <servers />
+  </component>
+</project>

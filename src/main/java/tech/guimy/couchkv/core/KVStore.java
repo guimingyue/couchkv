@@ -111,26 +111,29 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         this.compactor = new Compactor<>(this, fragmentationThreshold, autoCompact);
     }
 
+    @SuppressWarnings("unchecked")
     public static <K extends Serializable & Comparable<K>, V extends Serializable>
             KVStore<K, V> create(Path path) throws IOException {
         Files.deleteIfExists(path);
         Files.deleteIfExists(path.resolveSibling(path.getFileName() + ".wal"));
-        return new KVStore(path);
+        return (KVStore<K, V>) new KVStore(path, 0.3, false);
     }
 
+    @SuppressWarnings("unchecked")
     public static <K extends Serializable & Comparable<K>, V extends Serializable>
             KVStore<K, V> create(Path path, double fragmentationThreshold, boolean autoCompact) throws IOException {
         Files.deleteIfExists(path);
         Files.deleteIfExists(path.resolveSibling(path.getFileName() + ".wal"));
-        return new KVStore(path, fragmentationThreshold, autoCompact);
+        return (KVStore<K, V>) new KVStore(path, fragmentationThreshold, autoCompact);
     }
 
+    @SuppressWarnings("unchecked")
     public static <K extends Serializable & Comparable<K>, V extends Serializable>
             KVStore<K, V> open(Path path) throws IOException {
         if (!Files.exists(path)) {
             throw new FileNotFoundException("KV store not found: " + path);
         }
-        return new KVStore(path);
+        return (KVStore<K, V>) new KVStore(path, 0.3, false);
     }
 
     // ==================== Transaction API ====================
