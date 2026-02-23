@@ -628,16 +628,25 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
     @SuppressWarnings("unchecked")
     private void writeObject(DataOutputStream dos, Object obj) throws IOException {
         if (obj instanceof String) {
+            dos.writeByte(0);  // Type marker for String
             byte[] bytes = ((String) obj).getBytes(java.nio.charset.StandardCharsets.UTF_8);
             dos.writeInt(bytes.length);
             dos.write(bytes);
+        } else if (obj instanceof byte[]) {
+            dos.writeByte(1);  // Type marker for byte[]
+            byte[] bytes = (byte[]) obj;
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
         } else if (obj instanceof Integer) {
+            dos.writeByte(2);  // Type marker for Integer
             dos.writeInt((Integer) obj);
         } else if (obj instanceof Long) {
+            dos.writeByte(3);  // Type marker for Long
             dos.writeLong((Long) obj);
         } else if (obj == null) {
-            dos.writeInt(-1);  // Marker for null
+            dos.writeByte(-1);  // Marker for null
         } else {
+            dos.writeByte(127);  // Type marker for generic object
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             ObjectOutputStream oos = new ObjectOutputStream(baos);
             oos.writeObject(obj);
@@ -649,23 +658,43 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
 
     @SuppressWarnings("unchecked")
     private Object readObject(DataInputStream dis) throws IOException {
-        int len = dis.readInt();
-        if (len == -1) return null;  // Null marker
+        byte type = dis.readByte();
         
-        byte[] bytes = new byte[len];
-        dis.readFully(bytes);
-        
-        // Try to deserialize as string first
-        try {
-            return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            // Try Java serialization
-            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
-                 ObjectInputStream ois = new ObjectInputStream(bais)) {
-                return ois.readObject();
-            } catch (ClassNotFoundException ex) {
-                throw new IOException("Failed to deserialize object", ex);
-            }
+        switch (type) {
+            case 0:  // String
+                int strLen = dis.readInt();
+                byte[] strBytes = new byte[strLen];
+                dis.readFully(strBytes);
+                return new String(strBytes, java.nio.charset.StandardCharsets.UTF_8);
+                
+            case 1:  // byte[]
+                int bytesLen = dis.readInt();
+                byte[] bytes = new byte[bytesLen];
+                dis.readFully(bytes);
+                return bytes;
+                
+            case 2:  // Integer
+                return dis.readInt();
+                
+            case 3:  // Long
+                return dis.readLong();
+                
+            case -1:  // null
+                return null;
+                
+            case 127:  // Generic object
+                int objLen = dis.readInt();
+                byte[] objBytes = new byte[objLen];
+                dis.readFully(objBytes);
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(objBytes);
+                     ObjectInputStream ois = new ObjectInputStream(bais)) {
+                    return ois.readObject();
+                } catch (ClassNotFoundException ex) {
+                    throw new IOException("Failed to deserialize object", ex);
+                }
+                
+            default:
+                throw new IOException("Unknown type marker: " + type);
         }
     }
 
