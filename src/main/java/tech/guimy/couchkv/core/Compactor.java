@@ -1,4 +1,7 @@
-package tech.guimy.couchkv;
+package tech.guimy.couchkv.core;
+
+import tech.guimy.couchkv.CompactionStats;
+import tech.guimy.couchkv.Entry;
 
 import java.io.IOException;
 import java.io.Serializable;

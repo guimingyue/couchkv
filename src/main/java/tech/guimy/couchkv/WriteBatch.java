@@ -1,5 +1,7 @@
 package tech.guimy.couchkv;
 
+import tech.guimy.couchkv.core.KVStore;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

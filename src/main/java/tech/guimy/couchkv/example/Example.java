@@ -1,6 +1,6 @@
 package tech.guimy.couchkv.example;
 
-import tech.guimy.couchkv.KVStore;
+import tech.guimy.couchkv.core.KVStore;
 
 import java.nio.file.Path;
 

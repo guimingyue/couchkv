@@ -1,5 +1,8 @@
 package tech.guimy.couchkv;
 
+import tech.guimy.couchkv.core.Compactor;
+import tech.guimy.couchkv.core.KVStore;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
