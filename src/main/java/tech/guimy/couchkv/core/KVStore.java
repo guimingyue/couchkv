@@ -2,6 +2,7 @@ package tech.guimy.couchkv.core;
 
 import tech.guimy.couchkv.CompactionStats;
 import tech.guimy.couchkv.Entry;
+import tech.guimy.couchkv.TransactionIsolationLevel;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -138,19 +139,53 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
 
     // ==================== Transaction API ====================
 
+    /**
+     * Begins a new transaction with default isolation level (REPEATABLE_READ).
+     * 
+     * @return a new transaction
+     */
     public Transaction<K, V> beginTx() {
+        return beginTx(TransactionIsolationLevel.REPEATABLE_READ);
+    }
+
+    /**
+     * Begins a new transaction with the specified isolation level.
+     * 
+     * @param isolationLevel the transaction isolation level
+     * @return a new transaction
+     */
+    public Transaction<K, V> beginTx(TransactionIsolationLevel isolationLevel) {
         long txId = txIdGenerator.getAndIncrement();
-        Transaction<K, V> tx = new Transaction<>(txId, this);
+        Transaction<K, V> tx = new Transaction<>(txId, this, isolationLevel);
         activeTransactions.put(txId, tx);
         txWriteSets.put(txId, new ConcurrentHashMap<>());
-        
+
         // WAL: Write BEGIN record BEFORE returning transaction
         writeWALRecord(txId, WAL_BEGIN, null, null);
         return tx;
     }
 
+    /**
+     * Executes an operation within a transaction with default isolation level (auto-commits).
+     * 
+     * @param operation the operation to execute
+     * @return the operation result
+     * @throws IOException if the operation fails
+     */
     public <T> T execute(Function<Transaction<K, V>, T> operation) throws IOException {
-        Transaction<K, V> tx = beginTx();
+        return execute(operation, TransactionIsolationLevel.REPEATABLE_READ);
+    }
+
+    /**
+     * Executes an operation within a transaction with specified isolation level (auto-commits).
+     * 
+     * @param operation the operation to execute
+     * @param isolationLevel the transaction isolation level
+     * @return the operation result
+     * @throws IOException if the operation fails
+     */
+    public <T> T execute(Function<Transaction<K, V>, T> operation, TransactionIsolationLevel isolationLevel) throws IOException {
+        Transaction<K, V> tx = beginTx(isolationLevel);
         try {
             T result = operation.apply(tx);
             tx.commit();

@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d28da79d-0d45-44b6-9929-b3bfe84cc677" name="Changes" comment="" />
+    <list default="true" id="d28da79d-0d45-44b6-9929-b3bfe84cc677" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/src/main/java/tech/guimy/couchkv/Options.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/tech/guimy/couchkv/Options.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/java/tech/guimy/couchkv/core/Transaction.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/tech/guimy/couchkv/core/Transaction.java" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -20,9 +23,9 @@
     <commands />
     <urls />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="39xk60SK2f9fEledoebNVWBtHW8" />
   <component name="ProjectViewState">
     <option name="abbreviatePackageNames" value="true" />
@@ -31,26 +34,26 @@
     <option name="showLibraryContents" value="true" />
     <option name="showMembers" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Application.CouchKVComprehensiveTest.executor": "Run",
-    "Application.KVStoreTest.executor": "Run",
-    "Application.WALTest.executor": "Run",
-    "Application.tech.guimy.couchkv.CouchKVComprehensiveTest.executor": "Run",
-    "Application.tech.guimy.couchkv.WALTest.executor": "Run",
-    "JUnit.WALTest.executor": "Run",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "git-widget-placeholder": "master",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "/Users/guimingyue/github/couchkv",
-    "project.structure.last.edited": "Modules",
-    "project.structure.proportion": "0.15",
-    "project.structure.side.proportion": "0.2"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Application.CouchKVComprehensiveTest.executor&quot;: &quot;Run&quot;,
+    &quot;Application.KVStoreTest.executor&quot;: &quot;Run&quot;,
+    &quot;Application.WALTest.executor&quot;: &quot;Run&quot;,
+    &quot;Application.tech.guimy.couchkv.CouchKVComprehensiveTest.executor&quot;: &quot;Run&quot;,
+    &quot;Application.tech.guimy.couchkv.WALTest.executor&quot;: &quot;Run&quot;,
+    &quot;JUnit.WALTest.executor&quot;: &quot;Run&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/guimingyue/github/couchkv&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;Modules&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager" selected="Application.tech.guimy.couchkv.CouchKVComprehensiveTest">
     <configuration name="CouchKVComprehensiveTest" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="com.apache.couchkv.kv.CouchKVComprehensiveTest" />

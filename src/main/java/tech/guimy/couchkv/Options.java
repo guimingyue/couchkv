@@ -11,6 +11,7 @@ public class Options {
     private boolean autoCompact = false;
     private boolean createIfMissing = true;
     private boolean errorIfExists = false;
+    private TransactionIsolationLevel isolationLevel = TransactionIsolationLevel.REPEATABLE_READ;
 
     /**
      * Creates default options.
@@ -100,5 +101,25 @@ public class Options {
      */
     public boolean isErrorIfExists() {
         return errorIfExists;
+    }
+
+    /**
+     * Sets the transaction isolation level.
+     * 
+     * @param isolationLevel the isolation level
+     * @return this Options instance
+     */
+    public Options setIsolationLevel(TransactionIsolationLevel isolationLevel) {
+        this.isolationLevel = isolationLevel;
+        return this;
+    }
+
+    /**
+     * Gets the transaction isolation level.
+     * 
+     * @return the isolation level
+     */
+    public TransactionIsolationLevel getIsolationLevel() {
+        return isolationLevel;
     }
 }

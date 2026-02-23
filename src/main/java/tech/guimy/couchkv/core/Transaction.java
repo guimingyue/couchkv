@@ -1,5 +1,6 @@
 package tech.guimy.couchkv.core;
 
+import tech.guimy.couchkv.TransactionIsolationLevel;
 import tech.guimy.couchkv.TxStatus;
 
 import java.io.IOException;
@@ -17,11 +18,17 @@ public final class Transaction<K extends Serializable & Comparable<K>, V extends
     
     private final long txId;
     private final KVStore<K, V> store;
+    private final TransactionIsolationLevel isolationLevel;
     private TxStatus status;
 
     Transaction(long txId, KVStore<K, V> store) {
+        this(txId, store, TransactionIsolationLevel.REPEATABLE_READ);
+    }
+
+    Transaction(long txId, KVStore<K, V> store, TransactionIsolationLevel isolationLevel) {
         this.txId = txId;
         this.store = store;
+        this.isolationLevel = isolationLevel;
         this.status = TxStatus.ACTIVE;
     }
 
@@ -37,6 +44,13 @@ public final class Transaction<K extends Serializable & Comparable<K>, V extends
      */
     public TxStatus getStatus() {
         return status;
+    }
+
+    /**
+     * @return the transaction isolation level
+     */
+    public TransactionIsolationLevel getIsolationLevel() {
+        return isolationLevel;
     }
 
     /**
