@@ -1,4 +1,6 @@
-package tech.guimy.couchkv;
+package tech.guimy.couchkv.example;
+
+import tech.guimy.couchkv.*;
 
 import java.nio.file.Path;
 import java.util.Arrays;
