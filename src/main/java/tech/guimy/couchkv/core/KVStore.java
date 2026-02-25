@@ -2,6 +2,7 @@ package tech.guimy.couchkv.core;
 
 import tech.guimy.couchkv.CompactionStats;
 import tech.guimy.couchkv.Entry;
+import tech.guimy.couchkv.MVCCSnapshot;
 import tech.guimy.couchkv.TransactionIsolationLevel;
 
 import java.io.*;
@@ -46,10 +47,9 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
     
     // Constants
     private static final int ORDER = 32;
-    private static final int HEADER_SIZE = 4096;
     private static final int MEMTABLE_FLUSH_THRESHOLD = 500;
-    private static final long MAGIC = 0x434F5543484B5631L; // "COUCHKV1"
-    private static final int VERSION = 1;
+    private static final long MAGIC = 0x434F5543484B5632L; // "COUCHKV2"
+    private static final int VERSION = 2;
 
     private final Path dbPath;
     private final Path walPath;
@@ -63,12 +63,12 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
     private final AtomicLong sequenceNumber = new AtomicLong(1);
     private final AtomicLong txIdGenerator = new AtomicLong(1);
     private final Map<Long, Transaction<K, V>> activeTransactions = new ConcurrentHashMap<>();
-    private final Map<Long, Map<K, V>> txWriteSets = new ConcurrentHashMap<>();
+    private final Map<Long, MVCCSnapshot> txSnapshots = new ConcurrentHashMap<>();
     
     // B+Tree root (in-memory)
     private BTreeNode<K, V> root;
-    private long rootOffset = HEADER_SIZE;
-    private long fileSize = HEADER_SIZE;
+    private long rootOffset = -1;
+    private long fileSize = 0;
 
     // ==================== Construction ====================
 
@@ -97,9 +97,10 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         if (exists) {
             recover();
         } else {
-            writeHeader();
+            fileSize = DATA_START_OFFSET;
             root = new BTreeLeafNode<>();
-            rootOffset = fileSize;
+            rootOffset = -1;
+            writeHeader();
         }
 
         this.walChannel = FileChannel.open(walPath,
@@ -156,13 +157,41 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
      */
     public Transaction<K, V> beginTx(TransactionIsolationLevel isolationLevel) {
         long txId = txIdGenerator.getAndIncrement();
+        MVCCSnapshot snapshot = createSnapshot();
         Transaction<K, V> tx = new Transaction<>(txId, this, isolationLevel);
         activeTransactions.put(txId, tx);
-        txWriteSets.put(txId, new ConcurrentHashMap<>());
+        txSnapshots.put(txId, snapshot);
 
         // WAL: Write BEGIN record BEFORE returning transaction
         writeWALRecord(txId, WAL_BEGIN, null, null);
         return tx;
+    }
+    
+    MVCCSnapshot createSnapshot() {
+        long seq = sequenceNumber.get();
+        Map<String, Object> snapshot = new HashMap<>();
+        for (Map.Entry<K, V> entry : memTable.entrySet()) {
+            snapshot.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return new MVCCSnapshot(seq, snapshot);
+    }
+    
+    public long getSequenceNumber() {
+        return sequenceNumber.get();
+    }
+    
+    @SuppressWarnings("unchecked")
+    V getAtSequence(K key, long seq) {
+        for (Map.Entry<Long, MVCCSnapshot> entry : txSnapshots.entrySet()) {
+            MVCCSnapshot snap = entry.getValue();
+            if (snap.getSequenceNumber() <= seq) {
+                Object val = snap.get(String.valueOf(key));
+                if (val != null) {
+                    return (V) val;
+                }
+            }
+        }
+        return get(key);
     }
 
     /**
@@ -298,7 +327,7 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
     // ==================== Internal Transaction Operations ====================
 
     V getInternal(Transaction<K, V> tx, K key) {
-        Map<K, V> writeSet = txWriteSets.get(tx.getTxId());
+        Map<K, V> writeSet = tx.getWriteSet();
         if (writeSet != null && writeSet.containsKey(key)) {
             return writeSet.get(key);
         }
@@ -308,19 +337,11 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
     void putInternal(Transaction<K, V> tx, K key, V value) {
         // WAL: Write BEFORE buffering in write set
         writeWALRecord(tx.getTxId(), WAL_PUT, key, value);
-        Map<K, V> writeSet = txWriteSets.get(tx.getTxId());
-        if (writeSet != null) {
-            writeSet.put(key, value);
-        }
     }
 
     void deleteInternal(Transaction<K, V> tx, K key) {
         // WAL: Write BEFORE buffering
         writeWALRecord(tx.getTxId(), WAL_DELETE, key, null);
-        Map<K, V> writeSet = txWriteSets.get(tx.getTxId());
-        if (writeSet != null) {
-            writeSet.put(key, null);  // Tombstone
-        }
     }
 
     void commitInternal(Transaction<K, V> tx) throws IOException {
@@ -328,7 +349,7 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         writeWALRecord(tx.getTxId(), WAL_COMMIT, null, null);
         
         // Apply write set to memtable
-        Map<K, V> writeSet = txWriteSets.remove(tx.getTxId());
+        Map<K, V> writeSet = tx.getWriteSet();
         if (writeSet != null) {
             for (Map.Entry<K, V> e : writeSet.entrySet()) {
                 if (e.getValue() != null) {
@@ -340,6 +361,7 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         }
         
         activeTransactions.remove(tx.getTxId());
+        txSnapshots.remove(tx.getTxId());
         flushWAL();
     }
 
@@ -348,8 +370,8 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         writeWALRecord(tx.getTxId(), WAL_ABORT, null, null);
         
         // Discard write set (no changes applied)
-        txWriteSets.remove(tx.getTxId());
         activeTransactions.remove(tx.getTxId());
+        txSnapshots.remove(tx.getTxId());
         flushWAL();
     }
 
@@ -394,10 +416,22 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         entries.sort(Entry.KEY_COMPARATOR);
         
         BTreeNode<K, V> newTree = buildTree(entries, 0, entries.size());
+        rootOffset = saveBTreeNodes(newTree);
         this.root = newTree;
         writeHeader();
         
         memTable.clear();
+    }
+    
+    private long saveBTreeNodes(BTreeNode<K, V> node) throws IOException {
+        if (node instanceof BTreeInternalNode) {
+            BTreeInternalNode<K, V> internal = (BTreeInternalNode<K, V>) node;
+            for (int i = 0; i < internal.children.size(); i++) {
+                long childOffset = saveBTreeNodes(internal.children.get(i));
+                internal.children.get(i).fileOffset = childOffset;
+            }
+        }
+        return saveBTreeNode(node);
     }
 
     @SuppressWarnings("unchecked")
@@ -741,8 +775,14 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
 
     // ==================== Header Operations ====================
 
+    private static final int HEADER_SIZE_V2 = 4096;
+    private static final int HEADER1_OFFSET = 0;
+    private static final int HEADER2_OFFSET = 4096;
+    private static final int DATA_START_OFFSET = 8192;
+    private long headerVersion = 0;
+
     private void writeHeader() throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(HEADER_SIZE);
+        ByteBuffer buffer = ByteBuffer.allocate(HEADER_SIZE_V2);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         
         buffer.putLong(MAGIC);
@@ -751,42 +791,278 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
         buffer.putLong(fileSize);
         buffer.putLong(sequenceNumber.get());
         buffer.putLong(System.currentTimeMillis());
+        buffer.putLong(headerVersion + 1);
         
         CRC32 crc32 = new CRC32();
-        for (int i = 0; i < 32; i++) {
+        for (int i = 0; i < 48; i++) {
             crc32.update(buffer.get(i));
         }
-        buffer.position(4088);
+        buffer.position(4080);
         buffer.putInt((int) crc32.getValue());
         
         buffer.flip();
-        dataChannel.write(buffer, 0);
+        
+        long primaryOffset = (headerVersion % 2 == 0) ? HEADER1_OFFSET : HEADER2_OFFSET;
+        long secondaryOffset = (headerVersion % 2 == 0) ? HEADER2_OFFSET : HEADER1_OFFSET;
+        
+        dataChannel.write(buffer, primaryOffset);
         dataChannel.force(true);
+        dataChannel.write(buffer, secondaryOffset);
+        dataChannel.force(true);
+        
+        headerVersion++;
+        
+        if (fileSize < DATA_START_OFFSET) {
+            fileSize = DATA_START_OFFSET;
+        }
     }
 
     private void recover() throws IOException {
-        ByteBuffer buffer = ByteBuffer.allocate(HEADER_SIZE);
-        buffer.order(ByteOrder.LITTLE_ENDIAN);
-        dataChannel.read(buffer, 0);
-        buffer.flip();
+        ByteBuffer header1 = ByteBuffer.allocate(HEADER_SIZE_V2);
+        header1.order(ByteOrder.LITTLE_ENDIAN);
+        dataChannel.read(header1, HEADER1_OFFSET);
+        header1.flip();
         
-        long magic = buffer.getLong();
-        if (magic != MAGIC) {
-            throw new IOException("Invalid magic number");
+        ByteBuffer header2 = ByteBuffer.allocate(HEADER_SIZE_V2);
+        header2.order(ByteOrder.LITTLE_ENDIAN);
+        dataChannel.read(header2, HEADER2_OFFSET);
+        header2.flip();
+        
+        HeaderInfo info1 = parseHeader(header1);
+        HeaderInfo info2 = parseHeader(header2);
+        
+        HeaderInfo validHeader = selectValidHeader(info1, info2);
+        
+        if (validHeader == null) {
+            throw new IOException("No valid header found - database may be corrupted");
         }
         
-        int version = buffer.getInt();
-        if (version != VERSION) {
-            throw new IOException("Unsupported version: " + version);
+        rootOffset = validHeader.rootOffset;
+        fileSize = validHeader.fileSize;
+        sequenceNumber.set(validHeader.sequenceNumber);
+        headerVersion = validHeader.headerVersion;
+        
+        if (fileSize < DATA_START_OFFSET) {
+            fileSize = DATA_START_OFFSET;
         }
         
-        rootOffset = buffer.getLong();
-        fileSize = buffer.getLong();
-        long seq = buffer.getLong();
-        sequenceNumber.set(seq);
+        if (rootOffset >= DATA_START_OFFSET && rootOffset < fileSize) {
+            root = loadBTreeNode(rootOffset);
+        } else {
+            root = new BTreeLeafNode<>();
+        }
+    }
+    
+    private HeaderInfo parseHeader(ByteBuffer buffer) {
+        try {
+            long magic = buffer.getLong();
+            if (magic != MAGIC) return null;
+            
+            int version = buffer.getInt();
+            if (version != VERSION) return null;
+            
+            long rootOff = buffer.getLong();
+            long fSize = buffer.getLong();
+            long seq = buffer.getLong();
+            long timestamp = buffer.getLong();
+            long hVersion = buffer.getLong();
+            
+            buffer.position(4080);
+            int storedCrc = buffer.getInt();
+            
+            CRC32 crc32 = new CRC32();
+            buffer.position(0);
+            for (int i = 0; i < 48; i++) {
+                crc32.update(buffer.get(i));
+            }
+            
+            if (storedCrc != (int) crc32.getValue()) {
+                return null;
+            }
+            
+            HeaderInfo info = new HeaderInfo();
+            info.rootOffset = rootOff;
+            info.fileSize = fSize;
+            info.sequenceNumber = seq;
+            info.timestamp = timestamp;
+            info.headerVersion = hVersion;
+            info.valid = true;
+            return info;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private HeaderInfo selectValidHeader(HeaderInfo h1, HeaderInfo h2) {
+        if (h1 == null && h2 == null) return null;
+        if (h1 == null) return h2;
+        if (h2 == null) return h1;
         
-        // Reconstruct B+Tree (simplified - in-memory only)
-        root = new BTreeLeafNode<>();
+        if (h1.headerVersion > h2.headerVersion) return h1;
+        return h2;
+    }
+    
+    private static class HeaderInfo {
+        long rootOffset;
+        long fileSize;
+        long sequenceNumber;
+        long timestamp;
+        long headerVersion;
+        boolean valid;
+    }
+
+    // ==================== B+Tree Persistence ====================
+
+    private long saveBTreeNode(BTreeNode<K, V> node) throws IOException {
+        if (node == null) return -1;
+        
+        ByteBuffer buffer = node.serialize();
+        long offset = fileSize;
+        
+        dataChannel.write(buffer, offset);
+        fileSize += buffer.limit();
+        
+        node.fileOffset = offset;
+        return offset;
+    }
+    
+    @SuppressWarnings("unchecked")
+    private BTreeNode<K, V> loadBTreeNode(long offset) throws IOException {
+        if (offset < 0) return null;
+        
+        ByteBuffer lenBuffer = ByteBuffer.allocate(4);
+        lenBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        dataChannel.read(lenBuffer, offset);
+        lenBuffer.flip();
+        int dataLen = lenBuffer.getInt();
+        
+        ByteBuffer dataBuffer = ByteBuffer.allocate(dataLen);
+        dataChannel.read(dataBuffer, offset + 4);
+        dataBuffer.flip();
+        
+        ByteBuffer crcBuffer = ByteBuffer.allocate(4);
+        crcBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        dataChannel.read(crcBuffer, offset + 4 + dataLen);
+        crcBuffer.flip();
+        int storedCrc = crcBuffer.getInt();
+        
+        byte[] data = new byte[dataLen];
+        dataBuffer.position(0);
+        dataBuffer.get(data);
+        
+        CRC32 crc32 = new CRC32();
+        crc32.update(data);
+        if (storedCrc != (int) crc32.getValue()) {
+            throw new IOException("B+Tree node checksum mismatch at offset " + offset);
+        }
+        
+        dataBuffer.position(0);
+        byte nodeType = dataBuffer.get();
+        
+        if (nodeType == BTreeNode.NODE_TYPE_LEAF) {
+            BTreeLeafNode<K, V> leaf = new BTreeLeafNode<>();
+            int keyCount = dataBuffer.getInt();
+            for (int i = 0; i < keyCount; i++) {
+                byte keyType = dataBuffer.get();
+                K key = readKeyFromBuffer(dataBuffer, keyType);
+                byte valueType = dataBuffer.get();
+                V value = readValueFromBuffer(dataBuffer, valueType);
+                leaf.keys.add(key);
+                leaf.values.add(value);
+            }
+            leaf.fileOffset = offset;
+            return leaf;
+        } else if (nodeType == BTreeNode.NODE_TYPE_INTERNAL) {
+            int keyCount = dataBuffer.getInt();
+            int childCount = dataBuffer.getInt();
+            
+            List<K> keys = new ArrayList<>();
+            for (int i = 0; i < keyCount; i++) {
+                byte keyType = dataBuffer.get();
+                K key = readKeyFromBuffer(dataBuffer, keyType);
+                keys.add(key);
+            }
+            
+            long[] childOffsets = new long[childCount];
+            for (int i = 0; i < childCount; i++) {
+                childOffsets[i] = dataBuffer.getLong();
+            }
+            
+            BTreeInternalNode<K, V> internal = new BTreeInternalNode<>();
+            internal.keys.addAll(keys);
+            
+            for (long childOffset : childOffsets) {
+                BTreeNode<K, V> child = loadBTreeNode(childOffset);
+                internal.children.add(child);
+            }
+            
+            internal.fileOffset = offset;
+            return internal;
+        } else {
+            throw new IOException("Unknown node type: " + nodeType);
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private K readKeyFromBuffer(ByteBuffer buffer, byte type) throws IOException {
+        switch (type) {
+            case 0:
+                int strLen = buffer.getInt();
+                byte[] strBytes = new byte[strLen];
+                buffer.get(strBytes);
+                return (K) new String(strBytes, java.nio.charset.StandardCharsets.UTF_8);
+            case 1:
+                return (K) Integer.valueOf(buffer.getInt());
+            case 2:
+                return (K) Long.valueOf(buffer.getLong());
+            case 127:
+                int objLen = buffer.getInt();
+                byte[] objBytes = new byte[objLen];
+                buffer.get(objBytes);
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(objBytes);
+                     ObjectInputStream ois = new ObjectInputStream(bais)) {
+                    return (K) ois.readObject();
+                } catch (ClassNotFoundException ex) {
+                    throw new IOException("Failed to deserialize key", ex);
+                }
+            default:
+                throw new IOException("Unknown key type: " + type);
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private V readValueFromBuffer(ByteBuffer buffer, byte type) throws IOException {
+        if (type == -1) {
+            return null;
+        }
+        switch (type) {
+            case 0:
+                int strLen = buffer.getInt();
+                byte[] strBytes = new byte[strLen];
+                buffer.get(strBytes);
+                return (V) new String(strBytes, java.nio.charset.StandardCharsets.UTF_8);
+            case 1:
+                return (V) Integer.valueOf(buffer.getInt());
+            case 2:
+                return (V) Long.valueOf(buffer.getLong());
+            case 3:
+                int bytesLen = buffer.getInt();
+                byte[] bytes = new byte[bytesLen];
+                buffer.get(bytes);
+                return (V) bytes;
+            case 127:
+                int objLen = buffer.getInt();
+                byte[] objBytes = new byte[objLen];
+                buffer.get(objBytes);
+                try (ByteArrayInputStream bais = new ByteArrayInputStream(objBytes);
+                     ObjectInputStream ois = new ObjectInputStream(bais)) {
+                    return (V) ois.readObject();
+                } catch (ClassNotFoundException ex) {
+                    throw new IOException("Failed to deserialize value", ex);
+                }
+            default:
+                throw new IOException("Unknown value type: " + type);
+        }
     }
 
     // ==================== Compaction Support ====================
@@ -805,6 +1081,7 @@ public class KVStore<K extends Serializable & Comparable<K>, V extends Serializa
                 newTree = new BTreeLeafNode<>();
             }
             
+            rootOffset = saveBTreeNodes(newTree);
             this.root = newTree;
             writeHeader();
             dataChannel.force(true);

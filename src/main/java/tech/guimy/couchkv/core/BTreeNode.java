@@ -2,9 +2,17 @@ package tech.guimy.couchkv.core;
 
 import tech.guimy.couchkv.Entry;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.Serializable;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.CRC32;
 
 /**
  * Base class for append-only B+Tree nodes.
@@ -15,9 +23,12 @@ import java.util.List;
  */
 abstract class BTreeNode<K extends Serializable & Comparable<K>, V extends Serializable> {
     
+    protected static final byte NODE_TYPE_LEAF = 1;
+    protected static final byte NODE_TYPE_INTERNAL = 2;
+    
     protected final List<K> keys = new ArrayList<>();
-    protected long fileOffset = -1;  // Offset in the data file
-    protected long sequenceNumber;   // Sequence number for MVCC
+    protected long fileOffset = -1;
+    protected long sequenceNumber;
 
     /**
      * Gets the value for a key
@@ -93,6 +104,75 @@ abstract class BTreeNode<K extends Serializable & Comparable<K>, V extends Seria
         SplitResult(K separatorKey, BTreeNode<K, V> rightNode) {
             this.separatorKey = separatorKey;
             this.rightNode = rightNode;
+        }
+    }
+    
+    /**
+     * Serializes this node to a ByteBuffer for persistent storage.
+     */
+    abstract ByteBuffer serialize() throws IOException;
+    
+    /**
+     * Gets the node type for serialization.
+     */
+    abstract byte getNodeType();
+    
+    /**
+     * Writes a key to the output stream.
+     */
+    protected void writeKey(DataOutputStream dos, K key) throws IOException {
+        if (key instanceof String) {
+            dos.writeByte(0);
+            byte[] bytes = ((String) key).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
+        } else if (key instanceof Integer) {
+            dos.writeByte(1);
+            dos.writeInt((Integer) key);
+        } else if (key instanceof Long) {
+            dos.writeByte(2);
+            dos.writeLong((Long) key);
+        } else {
+            dos.writeByte(127);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(baos);
+            oos.writeObject(key);
+            byte[] bytes = baos.toByteArray();
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
+        }
+    }
+    
+    /**
+     * Writes a value to the output stream.
+     */
+    protected void writeValue(DataOutputStream dos, V value) throws IOException {
+        if (value == null) {
+            dos.writeByte(-1);
+        } else if (value instanceof String) {
+            dos.writeByte(0);
+            byte[] bytes = ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
+        } else if (value instanceof Integer) {
+            dos.writeByte(1);
+            dos.writeInt((Integer) value);
+        } else if (value instanceof Long) {
+            dos.writeByte(2);
+            dos.writeLong((Long) value);
+        } else if (value instanceof byte[]) {
+            dos.writeByte(3);
+            byte[] bytes = (byte[]) (Object) value;
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
+        } else {
+            dos.writeByte(127);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(baos);
+            oos.writeObject(value);
+            byte[] bytes = baos.toByteArray();
+            dos.writeInt(bytes.length);
+            dos.write(bytes);
         }
     }
 }

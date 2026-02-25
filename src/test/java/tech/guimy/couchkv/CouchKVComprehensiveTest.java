@@ -1,5 +1,8 @@
 package tech.guimy.couchkv;
 
+import tech.guimy.couchkv.core.KVStore;
+import tech.guimy.couchkv.core.Transaction;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
