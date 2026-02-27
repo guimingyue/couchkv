@@ -8,13 +8,18 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 ## Features
 
 - **Append-Only B+Tree**: All writes are appended to the file (no in-place updates)
+- **Persistent B+Tree**: Nodes are persisted to disk and reloaded on restart
+- **Double Header Write**: Crash-safe header with alternating writes (CouchDB-style)
 - **ACID Transactions**: Full transaction support with commit/abort and WAL
 - **Write-Ahead Logging (WAL)**: Crash recovery with durable logging
-- **MVCC**: Multi-version concurrency control for concurrent reads
+- **MVCC Snapshots**: Multi-version concurrency control for transaction isolation
+- **Transaction Isolation Levels**: READ_UNCOMMITTED, READ_COMMITTED, REPEATABLE_READ, SERIALIZABLE
+- **Atomic WriteBatch**: Batch operations with rollback on failure
 - **Range Queries**: Efficient range scans via linked leaf nodes
 - **CRC32 Checksums**: Data integrity verification for every block
 - **Compaction**: Reclaim space from tombstones and obsolete pages (like CouchDB)
 - **MemTable**: In-memory write buffer with automatic flush
+- **Sequence ID Persistence**: Sequence numbers survive restarts
 
 ## Architecture
 
@@ -28,6 +33,7 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 │         Transaction Manager         │
 │  - Write set buffering              │
 │  - MVCC snapshot isolation          │
+│  - Isolation level support          │
 ├─────────────────────────────────────┤
 │        Write-Ahead Log (WAL)        │
 │  - Append-only log records          │
@@ -36,6 +42,7 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 ├─────────────────────────────────────┤
 │       Append-Only B+Tree            │
 │  - Copy-on-write node updates       │
+│  - Persistent node storage          │
 │  - O(log n) operations              │
 │  - Leaf node linking for ranges     │
 ├─────────────────────────────────────┤
@@ -49,7 +56,7 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 │  - Tombstone cleanup                │
 ├─────────────────────────────────────┤
 │         Page Manager                │
-│  - 4KB header page                  │
+│  - Double header (8KB)              │
 │  - Variable-size data blocks        │
 │  - CRC32 verification               │
 └─────────────────────────────────────┘
@@ -59,30 +66,41 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 
 ```
 +------------------+
-| Header (4KB)     |
-| - Magic (8)      |  "COUCHKV1"
+| Header 1 (4KB)   |  Offset 0
+| - Magic (8)      |  "COUCHKV2"
 | - Version (4)    |
 | - Root offset (8)|
 | - File size (8)  |
 | - Seq num (8)    |
 | - Timestamp (8)  |
+| - Header ver (8)  |
 | - CRC32 (4)      |
 +------------------+
-| Block 1          |
+| Header 2 (4KB)   |  Offset 4096 (backup header)
+| - Same as Header 1|
++------------------+
+| B+Tree Nodes     |  Offset 8192+
+| - Node type (1)  |  LEAF=1, INTERNAL=2
+| - Key count (4)  |
+| - Keys/values    |
+| - CRC32 (4)      |
++------------------+
+| Data Blocks      |
 | - Length (4)     |
-| - Type (1)       |  LEAF=1, INTERNAL=2, DATA=4
+| - Type (1)       |
 | - SeqNum (8)     |
 | - Data (n)       |
 | - CRC32 (4)      |
-+------------------+
-| Block 2          |
-+------------------+
-| ...              |
 +------------------+
 | WAL file (.wal)  |
 | - Log records    |
 +------------------+
 ```
+
+The double header provides crash safety:
+- Headers alternate between writes
+- Recovery selects the most recent valid header
+- Prevents corruption from partial writes
 
 ## Requirements
 
@@ -94,7 +112,7 @@ A simple, lightweight key-value store implemented in Java with an **append-only 
 ### Basic Usage
 
 ```java
-import tech.guimy.couchkv.KVStore;
+import tech.guimy.couchkv.core.KVStore;
 import java.nio.file.Path;
 
 public class Example {
@@ -141,12 +159,13 @@ public class Example {
 ### Transactions
 
 ```java
-import tech.guimy.couchkv.KVStore;
-import tech.guimy.couchkv.Transaction;
+import tech.guimy.couchkv.core.KVStore;
+import tech.guimy.couchkv.core.Transaction;
+import tech.guimy.couchkv.TransactionIsolationLevel;
 
 try (KVStore<String, String> store = KVStore.create(Path.of("mydb.kv"))) {
 
-    // Begin a transaction
+    // Begin a transaction with default isolation (REPEATABLE_READ)
     Transaction<String, String> tx = store.beginTx();
 
     try {
@@ -166,6 +185,43 @@ try (KVStore<String, String> store = KVStore.create(Path.of("mydb.kv"))) {
         tx.put("key3", "value3");
         return "done";
     });
+    
+    // Or specify isolation level
+    Transaction<String, String> tx2 = store.beginTx(TransactionIsolationLevel.SERIALIZABLE);
+}
+```
+
+### Transaction Isolation Levels
+
+```java
+import tech.guimy.couchkv.TransactionIsolationLevel;
+
+// READ_UNCOMMITTED - Can read uncommitted changes from other transactions
+Transaction<String, String> tx1 = store.beginTx(TransactionIsolationLevel.READ_UNCOMMITTED);
+
+// READ_COMMITTED - Only reads committed data (default for most DBs)
+Transaction<String, String> tx2 = store.beginTx(TransactionIsolationLevel.READ_COMMITTED);
+
+// REPEATABLE_READ - Snapshot isolation, sees consistent data throughout transaction
+Transaction<String, String> tx3 = store.beginTx(TransactionIsolationLevel.REPEATABLE_READ);
+
+// SERIALIZABLE - Full isolation with conflict detection on commit
+Transaction<String, String> tx4 = store.beginTx(TransactionIsolationLevel.SERIALIZABLE);
+```
+
+### Atomic WriteBatch
+
+```java
+import tech.guimy.couchkv.WriteBatch;
+
+try (KVStore<String, byte[]> store = KVStore.create(Path.of("mydb.kv"))) {
+    WriteBatch batch = new WriteBatch()
+        .put("key1", "value1".getBytes())
+        .put("key2", "value2".getBytes())
+        .delete("key3");
+    
+    // All operations succeed or all fail (with rollback)
+    store.write(batch);
 }
 ```
 
@@ -214,7 +270,7 @@ try (KVStore<String, String> store = KVStore.create(Path.of("mydb.kv"))) {
 ### Integer Keys Example
 
 ```java
-import tech.guimy.couchkv.KVStore;
+import tech.guimy.couchkv.core.KVStore;
 import java.nio.file.Path;
 
 try (KVStore<Integer, String> store = KVStore.create(Path.of("mydb.kv"))) {
@@ -237,7 +293,7 @@ try (KVStore<Integer, String> store = KVStore.create(Path.of("mydb.kv"))) {
 
 ## API Reference
 
-### KVStore
+### KVStore (tech.guimy.couchkv.core.KVStore)
 
 | Method | Description |
 |--------|-------------|
@@ -247,19 +303,23 @@ try (KVStore<Integer, String> store = KVStore.create(Path.of("mydb.kv"))) {
 | `contains(K key)` | Check if key exists |
 | `range(K start, K end)` | Get entries in range [start, end] (null = unbounded) |
 | `scan()` | Get all entries |
-| `beginTx()` | Begin a new transaction |
+| `beginTx()` | Begin a new transaction (default: REPEATABLE_READ) |
+| `beginTx(IsolationLevel)` | Begin transaction with specified isolation level |
 | `execute(Function<Transaction, T>)` | Execute operation in transaction (auto-commit) |
+| `execute(Function<Transaction, T>, IsolationLevel)` | Execute with specified isolation level |
 | `read(Function<KVStore, T>)` | Execute read-only operation |
+| `createSnapshot()` | Create an MVCC snapshot |
+| `getSequenceNumber()` | Get current sequence number |
 | `compactor()` | Get the compactor for this store |
 | `flush()` | Flush all data to disk |
 | `size()` | Get approximate entry count |
 | `isEmpty()` | Check if store is empty |
 
-### Transaction
+### Transaction (tech.guimy.couchkv.core.Transaction)
 
 | Method | Description |
 |--------|-------------|
-| `get(K key)` | Get value within transaction |
+| `get(K key)` | Get value within transaction (uses snapshot for REPEATABLE_READ) |
 | `put(K key, V value)` | Put value within transaction |
 | `delete(K key)` | Delete key within transaction |
 | `commit()` | Commit the transaction |
@@ -267,6 +327,38 @@ try (KVStore<Integer, String> store = KVStore.create(Path.of("mydb.kv"))) {
 | `getStatus()` | Get transaction status (ACTIVE/COMMITTED/ABORTED) |
 | `isActive()` | Check if transaction is active |
 | `getTxId()` | Get unique transaction ID |
+| `getIsolationLevel()` | Get the transaction's isolation level |
+| `getSnapshot()` | Get the MVCC snapshot for this transaction |
+| `getSnapshotSequence()` | Get the sequence number at transaction start |
+
+### TransactionIsolationLevel
+
+| Level | Description |
+|-------|-------------|
+| `READ_UNCOMMITTED` | Can read uncommitted changes from other transactions |
+| `READ_COMMITTED` | Only reads committed data, but may see changes during transaction |
+| `REPEATABLE_READ` | Snapshot isolation - sees consistent data throughout transaction |
+| `SERIALIZABLE` | Full isolation with conflict detection on commit |
+
+### WriteBatch
+
+| Method | Description |
+|--------|-------------|
+| `put(byte[] key, byte[] value)` | Add put operation to batch |
+| `put(String key, String value)` | Add put operation to batch |
+| `delete(byte[] key)` | Add delete operation to batch |
+| `delete(String key)` | Add delete operation to batch |
+| `clear()` | Clear all operations |
+| `count()` | Get number of operations |
+
+### MVCCSnapshot
+
+| Method | Description |
+|--------|-------------|
+| `getSequenceNumber()` | Get the snapshot's sequence number |
+| `getTimestamp()` | Get when snapshot was created |
+| `get(Object key)` | Get value from snapshot |
+| `containsKey(Object key)` | Check if key exists in snapshot |
 
 ### Compactor
 
@@ -315,6 +407,8 @@ Keys and values must be `Serializable`. Supported types:
 - **Custom**: Any class implementing `Serializable`
 
 ```java
+import tech.guimy.couchkv.core.KVStore;
+
 // Custom serializable value
 record User(String name, int age) implements Serializable {}
 
@@ -374,16 +468,24 @@ mvn test -Dtest=CouchKVComprehensiveTest
 
 ```
 tech.guimy.couchkv/
-├── KVStore.java           # Main API with B+Tree and WAL
-├── Transaction.java       # ACID transaction support
-├── TxStatus.java          # Transaction status enum
-├── Compactor.java         # Compaction manager
-├── CompactionStats.java   # Compaction statistics
-├── Entry.java             # Key-value entry record
-├── BTreeNode.java         # B+Tree base class
-├── BTreeLeafNode.java     # Leaf nodes with linked list
-├── BTreeInternalNode.java # Internal index nodes
-└── Example.java           # Usage example
+├── core/
+│   ├── KVStore.java           # Core KV store with B+Tree and WAL
+│   ├── Transaction.java       # ACID transaction with isolation levels
+│   ├── BTreeNode.java         # B+Tree base class
+│   ├── BTreeLeafNode.java     # Leaf nodes with linked list
+│   ├── BTreeInternalNode.java # Internal index nodes
+│   └── Compactor.java         # Compaction manager
+├── CouchKV.java              # RocksDB-style facade API
+├── WriteBatch.java           # Atomic batch operations
+├── MVCCSnapshot.java         # Point-in-time snapshots
+├── TxStatus.java             # Transaction status enum
+├── TransactionIsolationLevel.java  # Isolation levels
+├── CompactionStats.java      # Compaction statistics
+├── Entry.java                # Key-value entry record
+├── Options.java              # Database configuration
+├── ReadOptions.java          # Read options
+├── WriteOptions.java         # Write options
+└── KVIterator.java           # Iterator for scanning
 ```
 
 ## Implementation Notes
@@ -393,11 +495,35 @@ tech.guimy.couchkv/
 - Old versions remain until compaction
 - Copy-on-write semantics for B+Tree nodes
 
+### B+Tree Persistence
+- B+Tree nodes are serialized and persisted to disk
+- Nodes are loaded from disk on recovery
+- Root offset stored in header for quick access
+
+### Double Header Write
+- Two headers at offsets 0 and 4096
+- Headers alternate on each write
+- Recovery selects most recent valid header
+- Protects against partial writes during crash
+
 ### WAL Recovery
 - WAL records are replayed on startup
 - Corrupted WAL records are skipped gracefully
 - Committed transactions are recovered
 - Uncommitted transactions are discarded
+
+### MVCC and Transaction Isolation
+- Each transaction creates a snapshot at start time
+- REPEATABLE_READ: Reads from snapshot, consistent view
+- SERIALIZABLE: Checks for conflicts on commit
+- READ_COMMITTED: Reads current committed data
+- READ_UNCOMMITTED: Reads any data (including uncommitted)
+
+### Atomic WriteBatch
+- All operations buffered before execution
+- Previous values captured for rollback
+- On failure, operations reversed in LIFO order
+- Ensures all-or-nothing semantics
 
 ### Null Value Handling
 - `put(key, null)` is treated as a deletion
